@@ -13,3 +13,6 @@ Cheats/
 /src/thehell3.rc
 .claude
 CLAUDE.md
+# Machine-specific Visual Studio settings from the official source archive
+*.vcxproj.user
+__pycache__/

@@ -755,3 +755,4 @@ case, a cloned repo or a worktree never appears there.
 Confirm cleanup with `GET /api/v1/sessions`, never with `/api/v1/sessions/unified`
 (that one folds in transcript history from the whole machine and will keep showing
 your worker forever).
+

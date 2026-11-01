@@ -1,91 +1,65 @@
-# Building The Hell 4 on Windows 11
+# Building ItemShare on Windows 11
+
+This workspace uses the official The Hell 4 v0.774 sources dated October 13,
+2026, with manual multiplayer item sharing. The result is ItemShare v0.774.1.
+It is a Win32/x86 executable that runs on Windows 11 x64; the legacy libraries
+and assembly do not provide a native x64 target.
 
 ## Prerequisites
 
-Install **Visual Studio Build Tools** with the following components:
+Install Visual Studio Build Tools with Desktop development with C++, the
+**v145** x86/x64 toolset, and a Windows SDK containing **fxc.exe**. The active
+build definitions are `TheHell_4.sln` and `thehell3.vcxproj`. CMake is for IDE
+indexing only.
 
-| Component | Where to find it |
-|---|---|
-| Desktop development with C++ workload | Workloads tab |
-| MSVC Build Tools for x64/x86 (Latest) | Included automatically |
-| Windows 11 SDK (10.0.22621.0) | Optional → Desktop development with C++ |
+## Configure and build
 
-No XP support, no v141, no CMake/vcpkg/testing tools needed.
+From the repository root, run:
 
----
-
-## Steps
-
-### 1. Run InitProject.bat
-
-From the repo root in a terminal:
-
-```
+```bat
 InitProject.bat
 ```
 
-This creates two files if they don't already exist:
-- `personal.props` — your local build settings
-- `thehell4.vcxproj.user` — debugger settings
+This creates `personal.props` and `thehell3.vcxproj.user` from portable example
+files under `tools/`, without overwriting existing local settings. Both generated
+files remain untracked. Edit `personal.props` if needed:
 
-### 2. Edit personal.props
+- `GameFolder`: output directory, ending in a backslash; defaults to `build/`.
+- `FxCopDir`: directory containing `fxc.exe`; defaults to the selected Windows
+  SDK's x86 tools. An explicit example is
+  `C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x86`.
 
-Open `personal.props` and set:
+In a Developer Command Prompt for Visual Studio Build Tools:
 
-```xml
-<GameFolder>C:\path\to\your\output\dir\</GameFolder>
-<FxCopDir>C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x86</FxCopDir>
-
+```bat
+msbuild TheHell_4.sln /p:Configuration=Release /p:Platform=Win32
+msbuild TheHell_4.sln /p:Configuration=Debug /p:Platform=Win32
 ```
 
-- **GameFolder** — where the built `TH4.exe` will be placed. Must end with a backslash `\`. The default `$(MSBuildProjectDirectory)\build\` outputs into a `build/` folder at the repo root — no changes needed unless you want a different location.
-- **FxCopDir** — directory containing `fxc.exe` (the HLSL shader compiler). The path above is correct if you installed Windows 11 SDK 10.0.22621.0.
+The output is `ItemShare.exe`. The existing PowerShell wrapper `build.ps1`
+also works after adjusting its MSBuild path for the local installation.
 
-### 3. Build
+The official source archive omits `res/credits.txt` and `res/support.txt`, which
+its resource script still requires. These two text resources are retained from
+the previous repository snapshot so the source can compile.
 
-#### Option A — From VS Code (recommended)
+## Run and verify
 
-Press `Ctrl+Shift+B` — VS Code will invoke MSBuild using the project's `.sln` file.
+Use a separate copy of the game installation and saves. The output directory
+needs the matching game's `config.ini`, `diabdat.mpq`, `TH4data.mor` and runtime
+DLL/network support files. Game data archives are not supplied by this source
+repository. Launch `ItemShare.exe`; all multiplayer peers need the same build.
 
-> If no build task exists yet, open the Command Palette (`Ctrl+Shift+P`) → **Tasks: Configure Default Build Task** → **Create tasks.json from template** → **MSBuild**, then point it at `TheHell_4.sln`.
+The save format stays at version **30**. Production decoder/reader tests accept
+the supplied v0.778 hero record; full Windows gameplay and live multiplayer
+verification are still required. The base game code is v0.774, so this build
+does not include later official v0.775–v0.778 fixes.
 
-#### Option B — From a Developer Command Prompt
+Portable protocol and save-reader checks need Python 3 and GCC with ASan/UBSan:
 
-Open a **Developer Command Prompt for VS Build Tools**, navigate to the repo root and run:
-
-```
-& "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\MSBuild.exe" TheHell_4.sln /p:Configuration=Release /p:Platform=Win32
-```
-
-Or simply use the provided script:
-```
-.\build.ps1
-```
-
-Use `Configuration=Debug` for a debug build.
-
----
-
-## After Building
-
-Copy these files into your `GameFolder` to run the game:
-
-```
-config.ini
-diabdat.mpq
-TH2data.mor
-THmusic.mor   (optional)
+```sh
+python3 tools/test_shared_items.py
+python3 tools/test_save_compatibility.py
 ```
 
-Then launch `TH4.exe` directly or via the VS debugger.
-
----
-
-## Troubleshooting
-
-| Error | Fix |
-|---|---|
-| `Cannot find fxc.exe` | Check `FxCopDir` in `personal.props` points to a folder that contains `fxc.exe` |
-| `personal.props not found` | Run `InitProject.bat` first |
-| `GameFolder` errors | Make sure the path ends with a backslash `\` and the folder exists |
-| `v143 toolset not found` | In VS Build Tools installer, ensure "MSVC Build Tools for x64/x86 (Latest)" is checked |
+See [the detailed implementation and gameplay checks](doc/multiplayer-item-sharing.md).

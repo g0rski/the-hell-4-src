@@ -99,6 +99,7 @@ add_executable(th2
         src/UniqueSets.cpp
         src/track.cpp
         src/msg.cpp
+        src/SharedItems.cpp
         src/sync.cpp
         src/multi.cpp
         src/tmsg.cpp
