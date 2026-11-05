@@ -15,8 +15,8 @@
   </PropertyGroup>
   <PropertyGroup>
     <ProjectGuid>{E982BC91-6810-4A42-94FB-19E3E744A3A7}</ProjectGuid>
-    <RootNamespace>ItemShare</RootNamespace>
-    <ProjectName>ItemShare</ProjectName>
+    <RootNamespace>DyniaMod</RootNamespace>
+    <ProjectName>DyniaMod</ProjectName>
     <ConfigurationType>Application</ConfigurationType>
     <UseOfMfc>false</UseOfMfc>
     <CharacterSet>MultiByte</CharacterSet>
@@ -33,7 +33,7 @@
   <PropertyGroup>
     <OutDir>$(GameFolder)</OutDir>
     <IntDir>.\$(Configuration)\</IntDir>
-    <TargetName>ItemShare</TargetName>
+    <TargetName>DyniaMod</TargetName>
     <LinkIncremental>true</LinkIncremental>
     <CopyOutputSymbolsToOutputDirectory>false</CopyOutputSymbolsToOutputDirectory>
   </PropertyGroup>

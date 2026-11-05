@@ -16,3 +16,6 @@ CLAUDE.md
 # Machine-specific Visual Studio settings from the official source archive
 *.vcxproj.user
 __pycache__/
+
+# Staged public releases (published under /agents/the-hell-4-src/updates/)
+/updates/

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Wydanie DyniaMod"
+  short_description: "Zbuduj i opublikuj aktualizację DyniaMod na Drive"
+  default_prompt: "Użyj $dyniamod-release, wykonaj powierzoną zmianę w grze, sprawdź kompilację i opublikuj aktualizację na Google Drive."

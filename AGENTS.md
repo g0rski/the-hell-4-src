@@ -20,6 +20,10 @@ Use Windows Visual Studio Build Tools with C++ support, the project's `v145` too
 
 Set `GameFolder` and `FxCopDir` in `personal.props`. Supply `config.ini`, `diabdat.mpq`, and `TH2data.mor` in the output directory, then launch `TH4.exe`.
 
+## Publikowanie zmian w aplikacji
+
+Po wykonaniu zmian w aplikacji zawsze korzystaj ze skilla [`$dyniamod-release`](.agents/skills/dyniamod-release/SKILL.md), aby sprawdzić zmiany, skompilować grę i opublikować aktualizację w konfiguracji **Release** w publicznym katalogu `updates` na Google Drive. Publikację wykonuj w ramach tego samego zadania, bez ponownego pytania o zgodę, zgodnie z procedurą skilla. Po zakończeniu podaj użytkownikowi link do gotowego pliku ZIP.
+
 ## Coding Style & Naming Conventions
 
 Match adjacent code: tab indentation, opening function braces on separate lines, and existing spacing. Preserve established PascalCase function/type names, local variable conventions, and uppercase constants. Keep `stdafx.h` first in C++ translation units. Register new files in the Visual Studio project and filters. Preserve structure packing and calling conventions used by legacy binary interfaces. No repository-wide formatter or linter configuration is present; avoid unrelated reformatting.

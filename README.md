@@ -1,18 +1,21 @@
-# ItemShare
+# DyniaMod
 
-Manual multiplayer item sharing based on the official The Hell 4 **v0.774**
+Manual multiplayer item sharing and Adria potion conversion based on the official The Hell 4 **v0.774**
 source release of **October 13, 2026**. This workspace replaces the previous
 March v0.208 source snapshot.
 
 - [Official source download](https://thehellmod.ucoz.ru/Downloads/Src/th_team-th4-src_2026-10-13.zip)
 - Source archive SHA-256: `8e59b657f558c6fa930bf20990dbd85273fd2b1c851314aecbeadf6d64636ba9`
-- Executable: **ItemShare v0.774.1**; separate multiplayer protocol revision **10774**.
+- Executable: **DyniaMod v0.774.1**; separate multiplayer protocol revision **10774**.
 - Save format: **30**, retaining the official 11,817-byte current player record.
 - Only manual inventory drops are shared. Normal gameplay loot stays private.
+- Adria's **Enchant Items** window also converts healing/mana potions for fixed
+  fees, placing results in the backpack and refilling its input from the backpack
+  or belt. See [conversion prices and validation](doc/potion-conversion.md).
 
 See [the implementation and validation notes](doc/multiplayer-item-sharing.md)
 and [Windows build instructions](BUILD.md). All multiplayer participants need
-the same ItemShare executable. Verification of the supplied v0.778 hero record
+the same DyniaMod executable. Verification of the supplied v0.778 hero record
 uses the production decoder and reader without editing the original save; full
 Windows gameplay verification is still required.
 

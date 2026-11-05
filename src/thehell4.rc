@@ -1075,12 +1075,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName", "Mordor"
-            VALUE "FileDescription", "ItemShare"
+            VALUE "FileDescription", "DyniaMod"
             VALUE "FileVersion", THE_HELL_VERSION_STRING
-            VALUE "InternalName", "ItemShare"
+            VALUE "InternalName", "DyniaMod"
             VALUE "LegalCopyright", "...."
-            VALUE "OriginalFilename", "ItemShare.exe"
-            VALUE "ProductName", "ItemShare"
+            VALUE "OriginalFilename", "DyniaMod.exe"
+            VALUE "ProductName", "DyniaMod"
             VALUE "ProductVersion", THE_HELL_VERSION_STRING
         END
     END

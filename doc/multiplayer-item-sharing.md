@@ -59,7 +59,7 @@ have a separate application journal so a snapshot removal cannot swallow a
 pending pickup. A grant to a reused player slot never awards an item without a
 request from that client.
 
-The executable is **ItemShare v0.774.1**, based on the official **v0.774** source
+The executable is **DyniaMod v0.774.1**, based on the official **v0.774** source
 release dated October 13, 2026. Its separate network revision **10774** prevents
 stock clients and the previous v0.209 build from joining incompatible sessions.
 All participants must use the updated executable. Commands 110–114 stay below

@@ -13,9 +13,102 @@ int EnchantPrices[9] = { 150/*1*/, 300/*2*/, 600/*3*/, 1050/*4*/, 1650/*5*/, 240
 char* EnchantPanelCEL = nullptr;
 char* LongButtonCEL = nullptr;
 
+namespace
+{
+	// Keep potion conversion separate from affix tiers and their price modifiers.
+	const int PotionConversionBases[] = { BI_24_POTION_OF_HEALING, BI_25_POTION_OF_MANA, BI_29_POTION_OF_FULL_HEALING, BI_30_POTION_OF_FULL_MANA };
+	std::array<DisplayObject, 3> PotionConversionButtons;
+	int PotionConversionPressedButton = -1;
+
+	int PotionConversionType(const Item& item)
+	{
+		if( item.ItemCode != IC_0_OTHER ) return -1;
+		switch( item.MagicCode ){
+		case MC_3_POTION_OF_HEALING: return 0;
+		case MC_6_POTION_OF_MANA: return 1;
+		case MC_2_POTION_OF_FULL_HEALING: return 2;
+		case MC_7_POTION_OF_FULL_MANA: return 3;
+		default: return -1;
+		}
+	}
+
+	int PotionConversionTarget(int buttonIndex)
+	{
+		int source = PotionConversionType(EnchantItem);
+		if( source == -1 || buttonIndex < 0 || buttonIndex >= 3 ) return -1;
+		if( source >= 2 ) return buttonIndex == 0 ? (source == 2 ? 3 : 2) : -1;
+		return buttonIndex < source ? buttonIndex : buttonIndex + 1;
+	}
+
+	int PotionConversionPrice(int buttonIndex)
+	{
+		int target = PotionConversionTarget(buttonIndex);
+		if( target == -1 ) return 0;
+		return PotionConversionType(EnchantItem) < 2 && target >= 2 ? 30 : 9;
+	}
+
+	int PotionConversionOutputCell()
+	{
+		Player& player = Players[CurrentPlayerIndex];
+		for( int cell = 0; cell < InvRows * InvCols; ++cell ){
+			if( AutoPutCursorToCell(player, cell, 1, 1, false) ) return cell;
+		}
+		return -1;
+	}
+
+	void RefillEnchantPotion(int source)
+	{
+		Player& player = Players[CurrentPlayerIndex];
+		EnchantItem.ItemCode = IC_M1_NONE;
+		for( int i = 0; i < player.InvItemCount; ++i ){
+			if( PotionConversionType(player.InventorySlots[i]) == source ){
+				EnchantItem = player.InventorySlots[i];
+				ClearInventorySlot(CurrentPlayerIndex, i);
+				return;
+			}
+		}
+		for( int i = 0; i < IS_8_Belt_Count; ++i ){
+			if( PotionConversionType(player.BeltInventory[i]) == source ){
+				EnchantItem = player.BeltInventory[i];
+				ClearBeltSlot(CurrentPlayerIndex, i);
+				return;
+			}
+		}
+	}
+
+	void ConvertEnchantPotion(int buttonIndex)
+	{
+		int target = PotionConversionTarget(buttonIndex);
+		int price = PotionConversionPrice(buttonIndex);
+		int source = PotionConversionType(EnchantItem);
+		int cell = PotionConversionOutputCell();
+		if( target == -1 || cell == -1 || Cur.GraphicsID >= CM_12_ITEMS_PICS_START
+		 || (uint)price > CalcTotalGold(CurrentPlayerIndex) ) return;
+		// Rebuild a normal base item so saves and multiplayer retain the new type.
+		// In particular, discard shop origins that can regenerate a different potion.
+		Item converted;
+		SetPlayerHandItem(converted, PotionConversionBases[target]);
+		converted.SetSeed(EnchantItem.seed, EnchantItem.genVersion);
+		converted.dropType = D_0_SIMPLE;
+		converted.Identified = true;
+		converted.IsReqMet = true;
+		Player& player = Players[CurrentPlayerIndex];
+		Item previousCursor = player.ItemOnCursor;
+		player.ItemOnCursor = converted;
+		bool placed = AutoPutCursorToCell(player, cell, 1, 1, true);
+		player.ItemOnCursor = previousCursor;
+		if( !placed ) return;
+		ClearGoldByInventoryAsPrice(price);
+		RefillEnchantPotion(source);
+		PlayGlobalSound(S_1516_adria_enchant_sfx);
+	}
+}
+
 //----- (th2) -------------------------------------------------------------
 void __fastcall Enchant_Open()
 {
+    PotionConversionPressedButton = -1;
+    IsEnchantPressed = false;
     IsChatHistoryVisible = false;
     EnchantItem.ItemCode = IC_M1_NONE;
     IsEnchantPanelVisible = true;
@@ -51,6 +144,7 @@ int SlotToEnchant(Item& item)
 //----- (th2) -------------------------------------------------------------
 bool AllowEnchant(Item& item)
 {
+	if( PotionConversionType(item) != -1 ) return true;
 	return !(item.dropType & D_ENCHANT) && item.MagicLevel == ML_0_USUAL
 		&& (!item.socketsAmount || item.dropType & D_ENCHANT && item.socketsAmount <= MaxAddSockets_4)
 		&& not(item.ItemCode, IC_11_GOLD, IC_12_RING, IC_13_AMULET, IC_0_OTHER)
@@ -63,6 +157,16 @@ int EnchantButtonPicNumber(bool isAffixButton, int affixButtonIndex)
 	if( ! isAffixButton ){
 		return IsEnchantPressed && CursorIntoDisplayObject(EnchantLeaveButton) ? N_ENCH_PRESS : N_ENCH;
 	}else{
+		if( PotionConversionType(EnchantItem) != -1 ){
+			if( PotionConversionTarget(affixButtonIndex) == -1
+			 || Cur.GraphicsID >= CM_12_ITEMS_PICS_START
+			 || PotionConversionOutputCell() == -1
+			 || (uint)PotionConversionPrice(affixButtonIndex) > CalcTotalGold(CurrentPlayerIndex) ) return ENCH_INACTIVE;
+			if( CursorIntoDisplayObject(PotionConversionButtons[affixButtonIndex]) ){
+				return PotionConversionPressedButton == affixButtonIndex ? ENCH_PRESS : ENCH_HIGH;
+			}
+			return ENCH_AVAILABLE;
+		}
 		if( EnchantItem.ItemCode == IC_M1_NONE 
 		 || !IsCharacterLevelReqMetForEnchant(affixButtonIndex) 
 		 || (EnchantItem.ItemCode != IC_M1_NONE && SlotToEnchant(EnchantItem) == -1
@@ -95,10 +199,25 @@ void SetupEnchantPanel()
 	for (int i = 0; i < 9; i++) {
 		SetupDisplayObject(EnchantAffixButtons[i], EnchantPanel.Left + 15, EnchantPanel.Top - 1 + 238 - 20 + 21 * i, 292, 20);
 	}
+	for( int i = 0; i < 3; ++i ){
+		SetupDisplayObject(PotionConversionButtons[i], EnchantPanel.Left + 15, EnchantPanel.Top + 217 + 21 * i, 292, 20);
+	}
 }
 //----- (th2) -------------------------------------------------------------
 void __fastcall Enchant_DrawEnchantButtons()
 {
+	if( PotionConversionType(EnchantItem) != -1 ){
+		for( int i = 0; i < 3; ++i ){
+			int target = PotionConversionTarget(i);
+			if( target == -1 ) continue;
+			auto& b = PotionConversionButtons[i];
+			int picture = EnchantButtonPicNumber(1, i);
+			Surface_DrawCEL(b.Left + Screen_LeftBorder, b.Down + Screen_TopBorder, LongButtonCEL, picture, b.Width);
+			sprintf_s(EnchantString, L("%s, %i gold"), LocalizedBaseItemName((const char*)BaseItems[PotionConversionBases[target]].NamePtr), PotionConversionPrice(i));
+			DrawText(b.Left, b.Top + 16, b.Left + b.Width - 1, EnchantString, 0);
+		}
+		return;
+	}
 	for( int i = 0; i < 9; i++ ){
 		auto& b = EnchantAffixButtons[i];
 		Surface_DrawCEL(b.Left + Screen_LeftBorder, b.Down + Screen_TopBorder, LongButtonCEL, EnchantButtonPicNumber(1, i), b.Width);
@@ -116,7 +235,7 @@ void __fastcall Enchant_DrawItemBacklight()
 {
 	uchar backlightColor = BLC_NONE;
 	if( EnchantItem.ItemCode != IC_M1_NONE ){
-		backlightColor = SlotToEnchant(EnchantItem) == -1 ? blColor.cooked : blColor.main;
+		backlightColor = PotionConversionType(EnchantItem) == -1 && SlotToEnchant(EnchantItem) == -1 ? blColor.cooked : blColor.main;
 	}else if( Cur.GraphicsID >= CM_12_ITEMS_PICS_START ){
 		bool improper = ! AllowEnchant(Players[CurrentPlayerIndex].ItemOnCursor);
 		if( EnchantItem.ItemCode == IC_M1_NONE ){
@@ -228,6 +347,12 @@ void __fastcall Enchant_MouseClick()
 {
     if( CursorIntoDisplayObject(EnchantLeaveButton) ){
         Enchant_Close();
+    }else if( PotionConversionType(EnchantItem) != -1 ){
+		int button = PotionConversionPressedButton;
+		if( button != -1 && CursorIntoDisplayObject(PotionConversionButtons[button])
+		 && EnchantButtonPicNumber(1, button) != ENCH_INACTIVE ){
+			ConvertEnchantPotion(button);
+		}
     }else{
         for( int power = 0; power < 9; power++ ){
             if( CursorIntoDisplayObject(EnchantAffixButtons[power]) && EnchantButtonPicNumber(1, power) != ENCH_INACTIVE ){
@@ -243,11 +368,13 @@ void __fastcall Enchant_MouseClick()
         }
     }
     IsEnchantPressed = false;
+    PotionConversionPressedButton = -1;
 }
 
 //----- (th2) -------------------------------------------------------------
 void Enchant_PlaceItemIntoCraftSlot()
 {
+    PotionConversionPressedButton = -1;
     int srcItemGraphicValue = -1;
     Player& player = Players[CurrentPlayerIndex];
     srcItemGraphicValue = player.ItemOnCursor.GraphicValue;
@@ -274,6 +401,15 @@ void __fastcall Enchant_MouseMove()
         Tooltip_SetOffsetTop();
         Tooltip_Clear();
         Tooltip_AddLine(L("Exit"));
+    }else if( PotionConversionType(EnchantItem) != -1 && PotionConversionOutputCell() == -1 ){
+		for( int i = 0; i < 3; ++i ){
+			if( PotionConversionTarget(i) != -1 && CursorIntoDisplayObject(PotionConversionButtons[i]) ){
+				Tooltip_SetOffsetTop();
+				Tooltip_Clear();
+				Tooltip_AddLine(L("You do not have enough room in inventory"));
+				break;
+			}
+		}
     }
 }
 
@@ -303,6 +439,7 @@ void Enchant_RetrieveAllItems()
 void Enchant_GetItemFromItemSlot()
 {
 	if( ! CursorIntoDisplayObject(EnchantSlot) || EnchantItem.ItemCode == IC_M1_NONE ) return;
+    PotionConversionPressedButton = -1;
     PlayGlobalSound(S_56_I_INVGRAB);
 	Item& cur = Players[CurrentPlayerIndex].ItemOnCursor;
 	cur = EnchantItem;
@@ -315,6 +452,17 @@ void Enchant_GetItemFromItemSlot()
 //----- (th2) -------------------------------------------------------------
 void Enchant_LButtonDown()
 {
+    PotionConversionPressedButton = -1;
+	if( PotionConversionType(EnchantItem) != -1 ){
+		for( int i = 0; i < 3; ++i ){
+			if( CursorIntoDisplayObject(PotionConversionButtons[i]) && EnchantButtonPicNumber(1, i) != ENCH_INACTIVE ){
+				PlayGlobalSound(S_75_I_TITLEMOV);
+				IsEnchantPressed = true;
+				PotionConversionPressedButton = i;
+				return;
+			}
+		}
+	}
     if( CursorIntoDisplayObject(EnchantSlot) ){
         if( Cur.GraphicsID < CM_12_ITEMS_PICS_START ){
 			Enchant_GetItemFromItemSlot();
@@ -326,6 +474,7 @@ void Enchant_LButtonDown()
 			IsEnchantPressed = true;
 		}else for( int i = 0; i < 9; i++ ){
 			if( CursorIntoDisplayObject(EnchantAffixButtons[i]) && EnchantButtonPicNumber(1, i) != ENCH_INACTIVE
+			 && PotionConversionType(EnchantItem) == -1
 			 && (EnchantItem.effect[4].id == AE_NO || EnchantItem.MagicLevel == ML_0_USUAL && !(EnchantItem.dropType & D_ENCHANT) ) ){
 				PlayGlobalSound(S_75_I_TITLEMOV);
 				IsEnchantPressed = true;

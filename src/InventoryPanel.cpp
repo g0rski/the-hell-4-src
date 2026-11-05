@@ -1,5 +1,7 @@
 ﻿#include "stdafx.h"
 #include "ItemOverlay.h"
+#include <algorithm>
+#include <tuple>
 
 DisplayObject MainPanelRect;
 DisplayObject InventoryPanelRect;
@@ -153,9 +155,169 @@ bool RightSwapAllowed(int playerIndex, Item& item)
 int SigilButtonFrame = 1;  // Current frame for sigil button animation
 bool SigilButtonPressed = false;  // Optional: if you need pressed state
 bool IsSigilInventoryOpen = false;  // Tracks if sigil inventory is open
+
+struct InventorySortEntry
+{
+	int index;
+	int width;
+	int height;
+};
+
+// The positive cell is the bottom-left anchor; the rest of an item's cells
+// contain its negative slot number. Keep slot numbers stable for other panels.
+static bool PlaceSortedInventory(const vector<InventorySortEntry>& entries, int next,
+	int columns, char (&grid)[InvRows][InvCols], int previousCell, int& attempts)
+{
+	if( next == int(entries.size()) ) return true;
+	const auto& entry = entries[next];
+	int firstCell = 0;
+	if( next > 0 && entries[next - 1].width == entry.width && entries[next - 1].height == entry.height ){
+		// Equal-sized items are interchangeable for packing. Avoid exploring
+		// permutations of the same footprints when backtracking a crowded bag.
+		firstCell = previousCell + 1;
+	}
+	for( int cell = firstCell; cell < InvRows * columns; ++cell ){
+		if( --attempts < 0 ) return false;
+		int bottom = InvRows - 1 - cell / columns;
+		int left = cell % columns;
+		int top = bottom - entry.height + 1;
+		if( top < 0 || left + entry.width > columns ) continue;
+		bool free = true;
+		for( int row = top; row <= bottom; ++row ) for( int col = left; col < left + entry.width; ++col ){
+			if( grid[row][col] ) free = false;
+		}
+		if( !free ) continue;
+		int number = entry.index + 1;
+		for( int row = top; row <= bottom; ++row ) for( int col = left; col < left + entry.width; ++col ){
+			grid[row][col] = row == bottom && col == left ? number : -number;
+		}
+		if( PlaceSortedInventory(entries, next + 1, columns, grid, cell, attempts) ) return true;
+		for( int row = top; row <= bottom; ++row ) for( int col = left; col < left + entry.width; ++col ){
+			grid[row][col] = 0;
+		}
+	}
+	return false;
+}
+
+static bool CanSortInventory()
+{
+	const Player& player = Players[CurrentPlayerIndex];
+	return Cur.GraphicsID == CM_1_NORMAL_HAND && player.ItemOnCursor.ItemCode == IC_M1_NONE
+		&& player.CurAction <= PCA_3_WALK_HORISONTAL && player.CurLife >= 64 && !IsGoldSplitPanelVisible;
+}
+
+static bool SortInventory()
+{
+	if( !CanSortInventory() ) return false;
+	Player& player = Players[CurrentPlayerIndex];
+	Item* items = IsSigilInventoryOpen ? player.TalismanSlots : player.InventorySlots;
+	int count = IsSigilInventoryOpen ? player.TalItemCount : player.InvItemCount;
+	int columns = player.invCols;
+	if( count < 0 || count > IS_70_40_Inv_Count || columns <= 0 || columns > InvCols ) return false;
+
+	vector<InventorySortEntry> entries;
+	entries.reserve(count);
+	int area = 0;
+	for( int index = 0; index < count; ++index ){
+		const Item& item = items[index];
+		int graphic = item.GraphicValue + CM_12_ITEMS_PICS_START;
+		if( item.ItemCode == IC_M1_NONE || graphic >= MAX_9000_ITEM_PICS ) return false;
+		int width = ItemWidthTable[graphic] / CELL_SIZE;
+		int height = ItemHeightTable[graphic] / CELL_SIZE;
+		if( width <= 0 || width > columns || height <= 0 || height > InvRows ) return false;
+		area += width * height;
+		entries.push_back({index, width, height});
+	}
+	if( area > columns * InvRows ) return false;
+
+	stable_sort(entries.begin(), entries.end(), [items](const InventorySortEntry& a, const InventorySortEntry& b)
+	{
+		// Pack tall/wide items first, then group matching types and variants.
+		// Identical potions/oils have several base IDs for different drop levels.
+		// Names of unidentified items must not reveal their hidden identity.
+		if( a.height != b.height ) return a.height > b.height;
+		if( a.width != b.width ) return a.width > b.width;
+		const Item& x = items[a.index];
+		const Item& y = items[b.index];
+		auto xType = make_tuple(x.ItemCode, x.MagicCode, x.SpellIndex, x.subType, x.grade, bool(x.Identified));
+		auto yType = make_tuple(y.ItemCode, y.MagicCode, y.SpellIndex, y.subType, y.grade, bool(y.Identified));
+		if( xType != yType ) return xType < yType;
+		int nameOrder = strcmp(x.Identified ? x.FullMagicalItemName : x.Name, y.Identified ? y.FullMagicalItemName : y.Name);
+		if( nameOrder ) return nameOrder < 0;
+		if( x.GraphicValue != y.GraphicValue ) return x.GraphicValue < y.GraphicValue;
+		return x.baseItemIndex < y.baseItemIndex;
+	});
+
+	char sorted[InvRows][InvCols] = {};
+	// Bound backtracking so an awkward, nearly full bag cannot stall the game.
+	// Commit only a complete layout: failure leaves every original cell intact.
+	int attempts = 100000;
+	if( !PlaceSortedInventory(entries, 0, columns, sorted, -1, attempts) ) return false;
+	if( IsSigilInventoryOpen ) memcpy(player.TalUsedAlt, sorted, sizeof(sorted));
+	else memcpy(player.InvUsedAlt, sorted, sizeof(sorted));
+	Cur.InventoryCellID = -1;
+	return true;
+}
+
+static DisplayObject InventorySortButtonRect()
+{
+	int left = InventoryPanelRect.Right - 83;
+	int top = InventoryPanelRect.Down - 36;
+	return {left, top, 30, 32, top + 32, left + 30};
+}
+
+static bool CursorOnInventorySortButton()
+{
+	const auto button = InventorySortButtonRect();
+	return CursorX >= button.Left && CursorX < button.Right && CursorY >= button.Top && CursorY < button.Down;
+}
+
+static void DrawInventorySortButton()
+{
+	const auto button = InventorySortButtonRect();
+	bool hovered = CursorOnInventorySortButton();
+	bool enabled = CanSortInventory();
+	bool pressed = hovered && enabled && MouseButtonPressed == MBP_1_LEFT;
+	int x = button.Left;
+	int y = button.Top;
+	// Palette-native brass bevel and a stone inset, matching the inventory trim.
+	DrawBox(button, 0);
+	DrawRect({x + 1, y + 1, 28, 30}, hovered && enabled ? 194 : 201);
+	DrawBox({x + 2, y + 2, 26, 28}, pressed ? 28 : 24);
+	DrawBox({x + 2, y + 29, 26, 1}, 207);
+	DrawBox({x + 27, y + 2, 1, 28}, 207);
+	DrawRect({x + 3, y + 3, 24, 26}, 30);
+	int offset = pressed ? 1 : 0;
+	x += offset;
+	y += offset;
+	uchar ink = enabled ? (hovered ? 194 : 197) : 20;
+	// Three rows of ordered cells, with an arrow pointing from bottom to top.
+	for( int row = 0; row < 3; ++row ) for( int col = 0; col < 2; ++col ){
+		DrawBox({x + 6 + col * 7, y + 9 + row * 6, 5, 4}, 0);
+		DrawRect({x + 5 + col * 7, y + 8 + row * 6, 5, 4}, ink);
+	}
+	DrawBox({x + 22, y + 9, 1, 15}, 0);
+	DrawBox({x + 21, y + 8, 1, 15}, ink);
+	for( int step = 0; step < 4; ++step ){
+		DrawBox({x + 21 - step, y + 7 + step, step * 2 + 1, 1}, ink);
+	}
+	if( hovered ){
+		Tooltip_SetOffsetLeft();
+		Tooltip_AddLine(L("Sort inventory"), C_0_White);
+		Tooltip_AddLine(L("Group matching items, starting at the bottom left"), C_0_White);
+	}
+}
+
 //----- (0042118B) --------------------------------------------------------
 void Inventory_LButtonClick()
 {
+	if( CursorOnInventorySortButton() ){
+		if( CanSortInventory() ){
+			if( SortInventory() ) PlayGlobalSound(S_75_I_TITLEMOV);
+			else AddNewPlayerStatusFormattedMessage("%s", L("Not enough room to sort these items"));
+		}
+		return;
+	}
 	// --- Sigil button click check ---
 	if (SigilButtonCEL)
 	{
@@ -1190,6 +1352,7 @@ void DrawINVPanel()
     int gold = Players[CurrentPlayerIndex].TotalGold;
     sprintf(dest, L("gold: %i"), gold); // (th4) localizable
     DrawLevelInfoText(InventoryPanelRect.Right - 300, InventoryPanelRect.Top + 448, dest, 3);
+	DrawInventorySortButton();
 	// (rt) --- Sigil button ---
 	if (SigilButtonCEL && GameMode != GM_CLASSIC 
 		&& GameMode != GM_COLISEUM 
